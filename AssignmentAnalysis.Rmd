@@ -1,0 +1,75 @@
+---
+title: "Analysis"
+author: "Joe Mcilwaine"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+<style>
+  body {
+    font-family: "Computer Modern", "serif";
+    line-height: 2.5;
+    margin: 2em;
+    font-size: 16px;
+    text-align: justify;
+  }
+
+  
+  p {
+    margin-bottom: 2.5em; 
+  }
+
+  .math {
+    font-style: italic;
+    color: #0066cc;
+  }
+</style>
+
+
+
+<br>
+To complete this project, I implemented the Foundational Methodology for Data Science, outlined by John Rollins of IBM. This approach comprises ten stages grouped into three core phases, as shown below, creating an iterative procedure for leveraging data to reveal insights. This methodology offers a granular and implementable breakdown of the steps required to go from a business problem to a solution, making it particularly suitable for an introductory data science assignment.
+
+
+```{r, echo=FALSE, results='asis'}
+library(knitr)
+knitr::kable(
+  data.frame(
+    Phase = c("Problem definition", "", "Data Understanding & Organisation", "", "", "", "Validation & Deployment", "", "", ""),
+    Stage = c("Business Understanding", "Analytical Approach", "Requirements", "Collection", "Understanding", "Preparation", "Modelling", "Evaluation", "Deployment", "Feedback"),
+    Question = c("What problem/question are you trying to solve/answer?", "How can you use data to answer this question?", "What data is needed to answer the question?", "What is the source of the data? How will you collect & receive it?", "Is the data indicative of the problem to be solved?", "What work needs to be done on the data to make it usable?", "Does visualizing the data address the problem? What model will be helpful?", "Does the model answer the initial problem? Should it be adjusted?", "Can the model be practically implemented?", "Are the answers relevant and usable?")
+  ),
+  caption = "Foundational Methodology for Data Science"
+)
+```
+<br>
+
+*Note: the submitted R script is for the final chosen model. References to other techniques used iteratively are included in a code appendix at the end, representing skeletal representations to avoid excessive lines for each iteration.*
+
+The process of selecting which variables to keep was a combination of logical reasoning and an analysis of LASSO coefficients. LASSO helps identify and retain the most impactful predictors by introducing a penalty term that can shrink regression coefficients to zero, effectively performing feature selection. Regarding the LASSO regressions (Appendix 1), I adopted an iterative approach, substituting different variables (ensuring prior scaling for equitable regularisation) and evaluating their efficacy in predicting our target variable, review stars. Ultimately, this led to the identification of nine key predictors: "business_stars", "average_stars", "sentiment_score", "useful", "funny", "cool", "is_open", "BusinessAcceptsCreditCards", and "checkins_per_year". 
+
+These variables were kept as they returned noteworthy coefficients among the different testing iterations. For example, coefficients of -0.289, -0.190, and 0.421 were derived for the variables "useful," "funny," and "cool" from the review dataset. Equivalent analyses were carried out for the other datasets, leading to the inclusion of "business_stars", "average_stars", "is_open", and "BusinessAcceptsCreditCards" mentioned above.
+
+Feature engineering produced the remaining two predictors: "sentiment_score" and "checkins_per_year". Text data from each review was transformed using R's tm package for pre-processing and sentimentr package for assigning a score to each, assuming there will be a positive correlation between the sentiment of one's review and the rating they give to a business. Next, although the check-in dataset only contains a business identifier and a list of timestamps for each check-in, I wrote a script to count the number of check-ins, take the year difference between the first review and 2023, and then divide one by the other. The intuition for this was that the number of check-ins to an establishment should indicate its quality and, thus, how much a user will rate it; however, I scaled it by time to allow for a fairer comparison between new and old establishments.
+
+I chose to exclude all additional variables within these datasets, primarily due to their high prevalence of missing values or lack of discernible value in predicting the target variable. Their inclusion would likely introduce more variance than the associated reduction in bias, a determination made both qualitatively using intuition and supported by the LASSO coefficients.
+
+After merging these datasets, keeping only the target variable and the nine chosen predictors, and dropping the rows with missing data, we are left with 253,265 observations, driven primarily by the lack of data points for "average_stars". While this is a significant drop from the initial 1.3 million, I offer two justifications for this decision. Firstly, this subset still represents the larger dataset, as revealed by analysing the summary statistics before and after the merge. For example, the mean of “review_stars” went from 3.748 to 3.761, a change of merely 0.35%. Comparably low changes are observed for the other variables. Secondly, running the final model and analysing the results revealed that "average_stars" had the highest predictive power among the entire dataset (explanation in later section), further justifying its inclusion.
+
+One final consideration was to convert the target variable into an ordered categorical factor. Ultimately, I opted against it. Despite users selecting discrete values such as 1, 2, 3, 4, or 5 stars, categorising the variable as a straightforward ordered factor might oversimplify the subtle differences between neighbouring levels.
+
+This section presented my greatest challenge in this project: making data preparation decisions logically and justifiably. I found this challenging given the plethora of ways each variable could be incorporated, tweaked, and included. However, as outlined, through a combination of implementing statistical techniques and theory drawn from lecture material and online resources, as well as first-principles logical reasoning, I ended up with a final dataset.
+
+For this analysis, I employed an XGBoost (eXtreme Gradient Boosting) model. XGBoost works by constructing an ensemble of decision trees through a process known as gradient boosting. Initially, a single tree is created, predicting the average value of the target variable. Subsequent trees are then built to correct the errors of the combined ensemble by focusing on the residuals of the previous predictions. The algorithm incorporates a learning rate to control the contribution of each tree, and regularisation techniques are employed to prevent overfitting and enhance generalisation. The final prediction is a weighted sum of the individual tree predictions. 
+
+XGBoost, like other ensemble methods, prioritises flexibility and performance at the expense of interpretability. In the context of this task, which revolves solely around predicting user ratings for establishments, this trade-off appears justified. The emphasis here is on accurate predictions, and the intricate, non-linear relationships present in the data take precedence over the need for a highly interpretable model.
+
+The cross-validation parameters are defined after splitting the data into train (70% / 177,286 observations) and test (30% / 75,979 observations), selecting the predictors, and preparing them for training. Cross-validation is chosen over a single train-test split for its ability to reduce bias, enhance generalisation, and provide a robust performance evaluation, as the model is exposed to diverse patterns and variations within the dataset. Five folds were selected for cross-validation for the model to strike a balance in the bias-variance trade-off. With a moderate number of folds, bias is sufficiently reduced as each fold provides a comprehensive representation of the dataset, contributing to a more accurate performance estimate. This choice ensures a stable and reasonably low-variance performance evaluation, mitigating the impact of specific subsets on the overall assessment.
+
+Next, I iteratively tuned two hyperparameters in the model: maximum tree depth and learning rate. The prior was set at 8 by default, but I noticed a significant difference between training and test MSEs and feared overfitting. In reducing the maximum tree depth to 5, I corrected some of this. For the same reason, I reduced the learning rate from the default of 0.3 to 0.1, effectively reducing overfitting by lowering the weight of each tree on the final prediction.
+
+Once cross-validation is run, the optimal number of rounds (trees) is determined to be 48 (can vary with sample size). From here, the optimised model is re-run on our test data, producing a final MSE of 0.93. This value compares to one of 0.91 in our training data, which suggests strong generalisability of the model. Next, I wanted to test this result against LASSO, Ridge (Appendix 2), Bagging (Appendix 3), and Random Forest (Appendix 4) models. Ultimately, each underperformed XGBoost regarding MSE, with Random Forest coming the closest. This makes sense, given the similarity of both models leveraging an ensemble of decision trees.
+
+Finally, analysis of the model reveals that "average_stars" given by a user significantly outshines other features in terms of gain, showcasing a substantial improvement in the model's accuracy with a value of 0.51. Gain is calculated by measuring the improvement in the model's MSE due to the incorporation of a particular feature. This dominance is notably higher than the next feature, "sentiment_score," which, although still impactful with a gain of 0.25, falls behind "average_stars."
+
